@@ -12,25 +12,27 @@ def client_ping(count,serverAddress,serverPort,timeOut):
     message = message.encode()
 
     avrg = 0
-    diff = 0
-
+    countRtt = 0
+    
     for _ in range(count):
         try:
             start = time.perf_counter()
-            clientSocket.sendto(message,(serverAddress,serverPort))
+            clientSocket.sendto(message+str(_).encode(),(serverAddress,serverPort))
             responseMessage = clientSocket.recvfrom(2048)
-
-            if responseMessage:
-                end = time.perf_counter()
-                rtt = (end - start) * 1000
-                print("reply from",serverAddress,"in",rtt,"ms")
-
+            end = time.perf_counter()
+            rtt = (end - start) * 1000
+            countRtt += 1
+            print("reply from",serverAddress,"in",rtt,"ms")
             avrg = avrg + rtt
+
         except timeout:
             print("ping failed timeout")
         except ConnectionResetError :
             print("ping failed server unreachable")
-    print("the average RTT is",avrg/count)
+    if countRtt == 0:
+        print("no reply received")
+    else:
+        print("the average RTT is",avrg/countRtt,"ms")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
