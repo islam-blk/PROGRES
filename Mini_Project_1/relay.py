@@ -2,12 +2,13 @@ from socket import *
 from threading import *
 import argparse
 
-def forward(src,dest):
+def forward(src,dest,direction):
     
     while True:
         message = src.recv(2048)
         if message == b'':
             break
+        print(f"{direction} {len(message)} bytes ")
         dest.sendall(message)
     dest.shutdown(SHUT_WR)
    
@@ -17,10 +18,11 @@ def client_handler(clientRelayConnectionSocket:socket,clientAddress,serverAddres
         print("handling client",clientAddress)
         relayServerSocket = socket(AF_INET,SOCK_STREAM)
         relayServerSocket.connect((serverAddress,serverPort))
+        print(f"connected to server {serverAddress}:{serverPort}")
         t = Thread(target=forward,
-                args=(relayServerSocket,clientRelayConnectionSocket))
+                args=(relayServerSocket,clientRelayConnectionSocket,"server -> client"))
         t.start()
-        forward(clientRelayConnectionSocket,relayServerSocket)
+        forward(clientRelayConnectionSocket,relayServerSocket,"client -> server")
         t.join()
 
     except ConnectionRefusedError:
@@ -29,6 +31,7 @@ def client_handler(clientRelayConnectionSocket:socket,clientAddress,serverAddres
             print("can't resolve address")
     except ConnectionError:
             print("connection lost")
+    
     finally:
          relayServerSocket.close()
          clientRelayConnectionSocket.close()
@@ -40,12 +43,17 @@ def run_relay(relayPort,serverAddress,serverPort):
 
         clientRelaySocket.bind(('',relayPort))
         clientRelaySocket.listen(5)
-        print('Relay ready!!!')
+        clientRelaySocket.settimeout(1)
+        print('Relay ready!!!, listning on port ' + str(relayPort))
         
         while True:
-            clientRelayConnectionSocket,clientAddress = clientRelaySocket.accept()
-            Thread(target=client_handler,
-            args=(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort),daemon=True).start()
+            try:
+                clientRelayConnectionSocket,clientAddress = clientRelaySocket.accept()
+                Thread(target=client_handler,
+                args=(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort),daemon=True).start()
+            except timeout:
+                 continue
+                 
     except KeyboardInterrupt:
         print("server stoped")
     finally:
@@ -63,6 +71,6 @@ if __name__ == "__main__":
     relayPort = args.relayPort
     serverPort = args.serverPort
     serverAddress=args.serverAddress
-    print(serverPort)
+    
 
     run_relay(relayPort,serverAddress,serverPort)

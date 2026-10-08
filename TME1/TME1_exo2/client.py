@@ -23,7 +23,7 @@ def req_clock_offset(sock):
 
 def run_client(count,serverAddress,serverPort):
     clientSocket = socket(AF_INET,SOCK_STREAM)
-    clientSocket.settimeout(1)
+    clientSocket.settimeout(15)
     result = []
 
     try:

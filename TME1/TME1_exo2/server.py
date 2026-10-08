@@ -9,6 +9,7 @@ def handle_client(connectionSocket,clientAddress):
                 message = connectionSocket.recv(2048).decode()
                 if not message:
                     break
+                time.sleep(10)
                 serverTime = str(time.time()).encode()
                 connectionSocket.send(serverTime)
         except ConnectionError:
@@ -26,9 +27,12 @@ def run_server(serverPort):
         serverSocket.listen(5)
         print("server ready")
         while True:
-            connectionSocket,clientAddress = serverSocket.accept()
-            Thread(target=handle_client,
-           args=(connectionSocket,clientAddress),daemon=True).start()
+            try:
+                connectionSocket,clientAddress = serverSocket.accept()
+                Thread(target=handle_client,
+                args=(connectionSocket,clientAddress),daemon=True).start()
+            except timeout:
+                continue
     except KeyboardInterrupt:
         print("server stoped")
     finally:
