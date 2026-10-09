@@ -3,13 +3,15 @@ from threading import *
 import argparse
 
 def forward(src,dest,direction):
-    
-    while True:
-        message = src.recv(2048)
-        if message == b'':
-            break
-        print(f"{direction} {len(message)} bytes ")
-        dest.sendall(message)
+    try:
+        while True:
+            message = src.recv(2048)
+            if message == b'':
+                break
+            print(f"{direction} {len(message)} bytes ")
+            dest.sendall(message)
+    except OSError as e:
+         print(f"{direction} error happened {e}")
     dest.shutdown(SHUT_WR)
    
 
@@ -20,7 +22,7 @@ def client_handler(clientRelayConnectionSocket:socket,clientAddress,serverAddres
         relayServerSocket.connect((serverAddress,serverPort))
         print(f"connected to server {serverAddress}:{serverPort}")
         t = Thread(target=forward,
-                args=(relayServerSocket,clientRelayConnectionSocket,"server -> client"))
+                args=(relayServerSocket,clientRelayConnectionSocket,"server -> client"),daemon=True)
         t.start()
         forward(clientRelayConnectionSocket,relayServerSocket,"client -> server")
         t.join()
