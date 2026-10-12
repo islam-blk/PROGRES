@@ -33,45 +33,17 @@ def read_request(socket):
     return buffer
 
 def read_response(socket):
-    buffer = b""
-    buffer_core = b""
-    taille = 0
+   
+    buffer = b''
 
-    # On recupere l'entete
-    while b"\r\n\r\n" not in buffer:
-        message = socket.recv(4028)
-        if not message:
-            raise ConnectionError("La connexion a ete interrompue !")
-        
-        buffer = buffer + message
-    en_tete, corps = buffer.split(b"\r\n\r\n", 1)
-    buffer = en_tete
+    while True:
+       message = socket.recv(4096)
+       if message == b'':
+           break
+       buffer += message
 
-    # On recupere juste le corps
-    buffer_core = buffer_core + corps
+    return buffer    
 
-    en_tete_split = en_tete.split(b"\r\n")
-
-    # On parcour lentete
-    for ligne in en_tete_split:
-        if b"content-length" in ligne.lower():
-            ligne_length = ligne.split(b":")
-            taille = int(ligne_length[1])
-
-    if taille == 0:
-        return buffer + b"\r\n\r\n"
-
-    # On recupere tout le messages
-    while len(buffer_core) < taille:
-        message = socket.recv(4028)
-        if not message:
-            raise ConnectionError("La connexion a ete interrompue !")
-        
-        buffer_core = buffer_core + message
-
-    buffer = buffer + b"\r\n\r\n" + buffer_core
-
-    return buffer
 
 
 
