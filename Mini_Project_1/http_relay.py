@@ -91,8 +91,9 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
     
 
 def run_relay(relayPort,serverAddress,serverPort,cache):
+    clientRelaySocket = socket(AF_INET,SOCK_STREAM)
+
     try:
-        clientRelaySocket = socket(AF_INET,SOCK_STREAM)
         clientRelaySocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         clientRelaySocket.bind(('',relayPort))
         clientRelaySocket.listen(5)
