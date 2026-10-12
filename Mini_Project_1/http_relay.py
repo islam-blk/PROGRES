@@ -10,7 +10,7 @@ def send_error(clientRelayConnectionSocket,status,reason,body,content_type):
     except OSError:
         pass
 
-def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort):
+def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort,cache):
     relayServerSocket = None
     try:
         try:
@@ -32,13 +32,14 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
             return
         try:
             cache_result = None
-            if method == "GET":
+            if method == "GET" and cache:
                 cache_result = cache_read(uri)
             if cache_result: 
                 print(f"cache hit on uri {uri}")
                 response = cache_result
             else:
-                print(f"cache miss on uri {uri}")
+                if cache:
+                    print(f"cache miss on uri {uri}")
 
                 relayServerSocket = socket(AF_INET,SOCK_STREAM)
                 relayServerSocket.connect((serverAddress,serverPort))
@@ -60,7 +61,7 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
 
                 status, res_headers, body = split_response(response)
             
-                if status == 200 and method == 'GET' :
+                if status == 200 and method == 'GET' and cache :
                     cache_put(uri,response)
             try:
                 clientRelayConnectionSocket.sendall(response)
@@ -74,8 +75,8 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
                 print("error in server address")
                 send_error(clientRelayConnectionSocket,502,"Bad Gateway",b"502 Bad Gateway: error in server address","text/html")
         except timeout:
-                print("server unreachable timeou")
-                send_error(clientRelayConnectionSocket,502,"Bad Gateway",b"502 Bad Gateway: server unreachable timeout","text/html")
+                print("server unreachable timeout")
+                send_error(clientRelayConnectionSocket,504,"Bad Gateway",b"502 Bad Gateway: server unreachable timeout","text/html")
         except ValueError:
                 print("Malformed response")
                 send_error(clientRelayConnectionSocket,502,"Bad Gateway",b"502 Bad Gateway: Malformed input","text/html")
@@ -89,26 +90,43 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
                                                     
     
 
-def run_relay(relayPort,serverAddress,serverPort):
-    clientRelaySocket = socket(AF_INET,SOCK_STREAM)
-    
-    clientRelaySocket.bind(('',relayPort))
-    clientRelaySocket.listen(5)
-    clientRelaySocket.settimeout(1)
-
-    print('Relay ready!!!, listning on port ' + str(relayPort))
-
+def run_relay(relayPort,serverAddress,serverPort,cache):
     try:
-            while True:
-                try:
-                    clientRelayConnectionSocket,clientAddress = clientRelaySocket.accept()
-                    Thread(target=client_handler,
-                    args=(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort),daemon=True).start()
-                except timeout:
-                        continue       
+        clientRelaySocket = socket(AF_INET,SOCK_STREAM)
+        clientRelaySocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        clientRelaySocket.bind(('',relayPort))
+        clientRelaySocket.listen(5)
+        clientRelaySocket.settimeout(1)
+
+        print('Relay ready!!!, listening on port ' + str(relayPort))
+
+    
+        while True:
+            try:
+                clientRelayConnectionSocket,clientAddress = clientRelaySocket.accept()
+                Thread(target=client_handler,
+                args=(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort,cache),daemon=True).start()
+            except timeout:
+                    continue       
 
     except KeyboardInterrupt:
-            print("server stoped")
+            print("server stopped")
     finally:
             clientRelaySocket.close()
 
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(
+                         description="relay ")
+    
+    parser.add_argument("--relayPort", type=int, default=3456, help="relay port")
+    parser.add_argument("--serverAddress",  default="127.0.0.1", help="server Address")
+    parser.add_argument("--serverPort", type=int, default=8000, help="server port")
+    parser.add_argument("--cache",action="store_true",help="add this argument to activate cache on the relay")
+    args = parser.parse_args()
+    relayPort = args.relayPort
+    serverPort = args.serverPort
+    serverAddress = args.serverAddress
+    cache = args.cache
+
+    run_relay(relayPort,serverAddress,serverPort,cache)
