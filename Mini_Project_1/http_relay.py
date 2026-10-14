@@ -132,7 +132,11 @@ def run_relay(relayPort,serverAddress,serverPort,cache,log):
         clientRelaySocket.listen(5)
         clientRelaySocket.settimeout(1)
 
-        print('Relay ready!!!, listening on port ' + str(relayPort))
+        print(f'Relay ready!!!, listening on port {str(relayPort)}\n' )
+        if cache:
+             print("cache on")
+        if log:
+                     print("log on")
 
     
         while True:
@@ -144,7 +148,7 @@ def run_relay(relayPort,serverAddress,serverPort,cache,log):
                     continue       
 
     except KeyboardInterrupt:
-            print("server stopped")
+            print("relay stopped")
     finally:
             clientRelaySocket.close()
 
