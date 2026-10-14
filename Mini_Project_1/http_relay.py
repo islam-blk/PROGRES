@@ -2,6 +2,8 @@ from socket import *
 from threading import *
 from http_utils import *
 import argparse
+from datetime import datetime
+from uuid import uuid4
 
 def send_error(clientRelayConnectionSocket,status,reason,body,content_type):
     try:
@@ -10,7 +12,23 @@ def send_error(clientRelayConnectionSocket,status,reason,body,content_type):
     except OSError:
         pass
 
-def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort,cache):
+def build_log(log_type, request_id, client_ip,uri,
+              status="", body_size=""):
+    timestamp = datetime.now().isoformat(timespec="milliseconds")
+
+    fields = [
+        timestamp,
+        request_id,
+        log_type,
+        client_ip,
+        uri,
+        str(status),
+        str(body_size)
+    ]
+
+    return "\t".join(fields)
+
+def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort,cache,log):
     relayServerSocket = None
     try:
         try:
@@ -21,6 +39,13 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
             clientRelayConnectionSocket.settimeout(None)
             
             method, uri, version, req_headers = parse_request(request)
+            client_ip = req_headers.get("x-forwarded-for", clientAddress[0])
+
+            request_id = uuid4().hex
+            if method == "GET" and log:
+                  write_log("relay.log", build_log(
+                 "REQUEST", request_id, client_ip, uri
+                 ))
         except ConnectionError:
             print("client disconnected")
             return
@@ -37,6 +62,7 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
             if cache_result: 
                 print(f"cache hit on uri {uri}")
                 response = cache_result
+                response_received = True
             else:
                 if cache:
                     print(f"cache miss on uri {uri}")
@@ -54,15 +80,22 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
 
                 relayServerSocket.settimeout(30)
                 response = read_response(relayServerSocket)
+                response_received = bool(response)
 
-                if response == b'':
+                if not response:
                     response = build_response(502,"Bad Gateway",b"502 Bad Gateway","text/html")
                     
 
                 status, res_headers, body = split_response(response)
+                
             
                 if status == 200 and method == 'GET' and cache :
                     cache_put(uri,response)
+            status, res_headers, body = split_response(response)
+            if response_received and method == "GET" and body and log:
+                                 write_log("relay.log", build_log(
+                                "RESPONSE", request_id, client_ip , uri,status, len(body)
+                                ))
             try:
                 clientRelayConnectionSocket.sendall(response)
             except OSError:
@@ -90,7 +123,7 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
                                                     
     
 
-def run_relay(relayPort,serverAddress,serverPort,cache):
+def run_relay(relayPort,serverAddress,serverPort,cache,log):
     clientRelaySocket = socket(AF_INET,SOCK_STREAM)
 
     try:
@@ -106,7 +139,7 @@ def run_relay(relayPort,serverAddress,serverPort,cache):
             try:
                 clientRelayConnectionSocket,clientAddress = clientRelaySocket.accept()
                 Thread(target=client_handler,
-                args=(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort,cache),daemon=True).start()
+                args=(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort,cache,log),daemon=True).start()
             except timeout:
                     continue       
 
@@ -124,10 +157,13 @@ if __name__ == "__main__":
     parser.add_argument("--serverAddress",  default="127.0.0.1", help="server Address")
     parser.add_argument("--serverPort", type=int, default=8000, help="server port")
     parser.add_argument("--cache",action="store_true",help="add this argument to activate cache on the relay")
+    parser.add_argument("--log",action="store_true",help="add this argument to activate loggin GET requests ")
+
     args = parser.parse_args()
     relayPort = args.relayPort
     serverPort = args.serverPort
     serverAddress = args.serverAddress
     cache = args.cache
+    log = args.log
 
-    run_relay(relayPort,serverAddress,serverPort,cache)
+    run_relay(relayPort,serverAddress,serverPort,cache,log)

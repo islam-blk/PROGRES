@@ -1,10 +1,26 @@
 from threading import *
+from pathlib import Path
 
-#Dico pour cache
+#Dico pour cache,log
 cache_http = {}
 verrou = Lock()
+log_lock = Lock()
 
 
+# Fonction pour ecrire dans le log
+def clean_field(field):
+    return str(field).replace("\n", " ").replace("\r", " ").replace("\t", " ")
+
+def write_log(fichier, log):
+    
+    try:
+        fichier = Path(fichier)
+        fichier.parent.mkdir(parents=True, exist_ok=True)
+        with log_lock:
+            with open(fichier, "a",encoding="utf-8") as f:
+                f.write(log + "\n")
+    except OSError as e:
+        print(f"error while writing to the log file: {e}")
 
 # Fonction pour ecrire dans le cache avec des verrous
 def cache_put(cle, valeur):
