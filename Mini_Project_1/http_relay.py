@@ -19,16 +19,16 @@ def build_log(log_type, request_id, client_ip,uri,
     fields = [
         timestamp,
         request_id,
-        log_type,
+        clean_field(log_type),
         client_ip,
-        uri,
+        clean_field(uri),
         str(status),
         str(body_size)
     ]
 
     return "\t".join(fields)
 
-def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort,cache,log):
+def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort,cache,log,ban):
     relayServerSocket = None
     try:
         try:
@@ -40,7 +40,6 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
             
             method, uri, version, req_headers = parse_request(request)
             client_ip = req_headers.get("x-forwarded-for", clientAddress[0])
-
             request_id = uuid4().hex
             if method == "GET" and log:
                   write_log("relay.log", build_log(
@@ -56,50 +55,66 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
             send_error(clientRelayConnectionSocket,400,"Bad request",b"Bad request: malformed request","text/html")
             return
         try:
-            cache_result = None
-            if method == "GET" and cache:
-                cache_result = cache_read(uri)
-            if cache_result: 
-                print(f"cache hit on uri {uri}")
-                response = cache_result
-                response_received = True
+            is_banned = False
+            for site in ban:
+                if site in uri.lower():
+                      is_banned = True
+            if  method == "GET" and is_banned:
+                write_log("forbidden.log", client_ip)
+                send_error(clientRelayConnectionSocket,403,"Forbidden",b"Forbidden","text/plain")
+                return
             else:
-                if cache:
-                    print(f"cache miss on uri {uri}")
+                cache_result = None
+                if method == "GET" and cache:
+                    cache_result = cache_read(uri)
+                if cache_result: 
+                    print(f"cache hit on uri {uri}")
+                    response = cache_result
+                    response_received = True
+                else:
+                    if cache:
+                        print(f"cache miss on uri {uri}")
 
-                relayServerSocket = socket(AF_INET,SOCK_STREAM)
-                relayServerSocket.connect((serverAddress,serverPort))
-                print(f"connected to server {serverAddress}:{serverPort}")
+                    relayServerSocket = socket(AF_INET,SOCK_STREAM)
+                    relayServerSocket.connect((serverAddress,serverPort))
+                    print(f"connected to server {serverAddress}:{serverPort}")
 
-                if not req_headers.get("x-forwarded-for"):
-                    req_headers["x-forwarded-for"] = clientAddress[0]
+                    if not req_headers.get("x-forwarded-for"):
+                        req_headers["x-forwarded-for"] = clientAddress[0]
 
-                request = build_request(method, uri, version,req_headers)
+                    request = build_request(method, uri, version,req_headers)
 
-                relayServerSocket.sendall(request)
+                    relayServerSocket.sendall(request)
 
-                relayServerSocket.settimeout(30)
-                response = read_response(relayServerSocket)
-                response_received = bool(response)
+                    relayServerSocket.settimeout(30)
+                    response = read_response(relayServerSocket)
+                    response_received = bool(response)
 
-                if not response:
-                    response = build_response(502,"Bad Gateway",b"502 Bad Gateway","text/html")
+                    if not response:
+                        response = build_response(502,"Bad Gateway",b"502 Bad Gateway","text/html")
+                        
+
+                    status, res_headers, body = split_response(response)
                     
-
-                status, res_headers, body = split_response(response)
                 
+                    if status == 200 and method == 'GET' and cache :
+                        cache_put(uri,response)
+
+                
+                try:
+                    if ban and method == "GET":
+                        response, was_censored = censor_response(response, ban)
+                        if was_censored:
+                             write_log("forbidden.log", client_ip)
+                    status, res_headers, body = split_response(response)
+                    if response_received and method == "GET" and body and log:
+                        write_log("relay.log",
+                                    build_log("RESPONSE", request_id, client_ip , uri,status, len(body)))
+                    clientRelayConnectionSocket.sendall(response)
+                except OSError:
+                    print("client left")
             
-                if status == 200 and method == 'GET' and cache :
-                    cache_put(uri,response)
-            status, res_headers, body = split_response(response)
-            if response_received and method == "GET" and body and log:
-                                 write_log("relay.log", build_log(
-                                "RESPONSE", request_id, client_ip , uri,status, len(body)
-                                ))
-            try:
-                clientRelayConnectionSocket.sendall(response)
-            except OSError:
-                 print("client left")
+                
         
         except ConnectionRefusedError:
                 print("server unreachable")
@@ -109,7 +124,7 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
                 send_error(clientRelayConnectionSocket,502,"Bad Gateway",b"502 Bad Gateway: error in server address","text/html")
         except timeout:
                 print("server unreachable timeout")
-                send_error(clientRelayConnectionSocket,504,"Bad Gateway",b"502 Bad Gateway: server unreachable timeout","text/html")
+                send_error(clientRelayConnectionSocket,504,"Gateway Timeout",b"504 Bad Gateway: server unreachable timeout","text/html")
         except ValueError:
                 print("Malformed response")
                 send_error(clientRelayConnectionSocket,502,"Bad Gateway",b"502 Bad Gateway: Malformed input","text/html")
@@ -123,7 +138,7 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
                                                     
     
 
-def run_relay(relayPort,serverAddress,serverPort,cache,log):
+def run_relay(relayPort,serverAddress,serverPort,cache,log,ban):
     clientRelaySocket = socket(AF_INET,SOCK_STREAM)
 
     try:
@@ -143,7 +158,7 @@ def run_relay(relayPort,serverAddress,serverPort,cache,log):
             try:
                 clientRelayConnectionSocket,clientAddress = clientRelaySocket.accept()
                 Thread(target=client_handler,
-                args=(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort,cache,log),daemon=True).start()
+                args=(clientRelayConnectionSocket,clientAddress,serverAddress,serverPort,cache,log,ban),daemon=True).start()
             except timeout:
                     continue       
 
@@ -162,6 +177,7 @@ if __name__ == "__main__":
     parser.add_argument("--serverPort", type=int, default=8000, help="server port")
     parser.add_argument("--cache",action="store_true",help="add this argument to activate cache on the relay")
     parser.add_argument("--log",action="store_true",help="add this argument to activate loggin GET requests ")
+    parser.add_argument("--ban",help="provide a txt file of banned URIs")
 
     args = parser.parse_args()
     relayPort = args.relayPort
@@ -169,5 +185,5 @@ if __name__ == "__main__":
     serverAddress = args.serverAddress
     cache = args.cache
     log = args.log
-
-    run_relay(relayPort,serverAddress,serverPort,cache,log)
+    ban = load_banned_sites(args.ban) if args.ban else []
+    run_relay(relayPort,serverAddress,serverPort,cache,log,ban)

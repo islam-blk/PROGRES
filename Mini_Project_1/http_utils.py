@@ -1,40 +1,14 @@
 from threading import *
 from pathlib import Path
-
+import re
 #Dico pour cache,log
 cache_http = {}
 verrou = Lock()
 log_lock = Lock()
 
 
-# Fonction pour ecrire dans le log
-def clean_field(field):
-    return str(field).replace("\n", " ").replace("\r", " ").replace("\t", " ")
-
-def write_log(fichier, log):
-    
-    try:
-        fichier = Path(fichier)
-        fichier.parent.mkdir(parents=True, exist_ok=True)
-        with log_lock:
-            with open(fichier, "a",encoding="utf-8") as f:
-                f.write(log + "\n")
-    except OSError as e:
-        print(f"error while writing to the log file: {e}")
-
-# Fonction pour ecrire dans le cache avec des verrous
-def cache_put(cle, valeur):
-    """Écrit ou met à jour une entrée dans le dictionnaire de manière thread-safe."""
-    with verrou:
-        cache_http[cle] = valeur
 
 
-def cache_read(cle, valeur_defaut=None):
-    """Lit une valeur dans le dictionnaire de manière thread-safe.
-    Renvoie valeur_defaut si la clé n'existe pas.
-    """
-    with verrou:
-        return cache_http.get(cle, valeur_defaut)
 
 
 def read_request(socket):
@@ -140,3 +114,80 @@ def build_response(status, reason, body, content_type):
                 
 
     return  response.encode("utf-8") + body
+
+
+def clean_field(field):
+    return str(field).replace("\n", " ").replace("\r", " ").replace("\t", " ")
+
+# Fonction pour ecrire dans le log
+def write_log(fichier, log):
+    
+    try:
+        fichier = Path(fichier)
+        fichier.parent.mkdir(parents=True, exist_ok=True)
+        with log_lock:
+            with open(fichier, "a",encoding="utf-8") as f:
+                f.write(log + "\n")
+    except OSError as e:
+        print(f"error while writing to the log file: {e}")
+
+# Fonction pour ecrire dans le cache avec des verrous
+def cache_put(cle, valeur):
+    """Écrit ou met à jour une entrée dans le dictionnaire de manière thread-safe."""
+    with verrou:
+        cache_http[cle] = valeur
+
+
+def cache_read(cle, valeur_defaut=None):
+    """Lit une valeur dans le dictionnaire de manière thread-safe.
+    Renvoie valeur_defaut si la clé n'existe pas.
+    """
+    with verrou:
+        return cache_http.get(cle, valeur_defaut)
+
+
+def load_banned_sites(bannedURI):
+    try:
+        with open(bannedURI, "r", encoding="utf-8") as f:
+            return [
+                line.strip().lower()
+                for line in f
+                if line.strip() and not line.strip().startswith("#")
+            ]
+    except FileNotFoundError:
+        print(f"Error: banned URI file '{bannedURI}' does not exist.")
+        return []
+    except OSError as e:
+        print(f"Error while opening banned URI file '{bannedURI}': {e}")
+        return []
+
+
+
+def censor_response(response, banned_sites):
+    head, body = response.split(b"\r\n\r\n", 1)
+    censored = False
+
+    for site in banned_sites:
+        pattern = (
+            rb'<a\b[^>]*href\s*=\s*["\'][^"\']*'
+            + re.escape(site.encode("utf-8"))
+            + rb'[^"\']*["\'][^>]*>.*?</a\s*>'
+        )
+
+        body, count = re.subn(
+            pattern, b"Forbidden", body,
+            flags=re.IGNORECASE | re.DOTALL
+        )
+        censored = censored or count > 0
+
+    if not censored:
+        return response, False
+
+    headers = head.split(b"\r\n")
+    headers = [
+        line for line in headers
+        if not line.lower().startswith(b"content-length:")
+    ]
+    headers.append(f"Content-Length: {len(body)}".encode())
+
+    return b"\r\n".join(headers) + b"\r\n\r\n" + body, True
