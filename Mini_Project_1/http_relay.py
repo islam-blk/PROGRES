@@ -20,7 +20,7 @@ def build_log(log_type, request_id, client_ip,uri,
         timestamp,
         request_id,
         clean_field(log_type),
-        client_ip,
+        clean_field(client_ip),
         clean_field(uri),
         str(status),
         str(body_size)
@@ -102,6 +102,8 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
 
                 
                 try:
+                    
+
                     if ban and method == "GET":
                         response, was_censored = censor_response(response, ban)
                         if was_censored:
@@ -185,5 +187,9 @@ if __name__ == "__main__":
     serverAddress = args.serverAddress
     cache = args.cache
     log = args.log
+
+    
     ban = load_banned_sites(args.ban) if args.ban else []
+    
+
     run_relay(relayPort,serverAddress,serverPort,cache,log,ban)

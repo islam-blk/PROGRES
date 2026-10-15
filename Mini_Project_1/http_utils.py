@@ -1,6 +1,7 @@
 from threading import *
 from pathlib import Path
 import re
+import sys
 #Dico pour cache,log
 cache_http = {}
 verrou = Lock()
@@ -156,10 +157,11 @@ def load_banned_sites(bannedURI):
             ]
     except FileNotFoundError:
         print(f"Error: banned URI file '{bannedURI}' does not exist.")
-        return []
+        sys.exit(1)
     except OSError as e:
         print(f"Error while opening banned URI file '{bannedURI}': {e}")
-        return []
+        sys.exit(1)
+        
 
 
 

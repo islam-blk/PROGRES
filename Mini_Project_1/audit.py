@@ -7,9 +7,21 @@ def search_log(fichier, uri):
     
     with open(fichier, "r", encoding="utf-8") as f:
         for ligne in f:
-            if "RESPONSE" in ligne and uri in ligne:
-                elem = ligne.strip().split("\t")
-                Ip.add(elem[3])
+            elem = ligne.rstrip("\n").split("\t")
+
+            # a valid log line has 7 columns:
+            # timestamp, id, type, client ip, uri, status, body size
+            if len(elem) != 7:
+                continue
+
+            # look at the type column and the uri column only
+            if elem[2] == "RESPONSE" and uri in elem[4]:
+                try:
+                    # only count non-empty responses
+                    if int(elem[6]) > 0:
+                        Ip.add(elem[3])
+                except ValueError:
+                    continue
 
     return Ip
 
@@ -25,8 +37,8 @@ def run(fichier, uri):
         print("No IP found")
         return
 
-    for ip in Ip:
-        print(f"IP client that recevied response for URI {uri} : {ip}")
+    for ip in sorted(Ip):
+        print(f"IP client that received response for URI {uri} : {ip}")
 
 
 def main():
