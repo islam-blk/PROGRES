@@ -100,19 +100,21 @@ def client_handler(clientRelayConnectionSocket,clientAddress,serverAddress,serve
                     if status == 200 and method == 'GET' and cache :
                         cache_put(uri,response)
 
-                
+                was_censored = False
+
                 try:
                     
 
                     if ban and method == "GET":
                         response, was_censored = censor_response(response, ban)
-                        if was_censored:
-                             write_log("forbidden.log", client_ip)
                     status, res_headers, body = split_response(response)
+                    clientRelayConnectionSocket.sendall(response)
+                    if was_censored:
+                        write_log("forbidden.log", client_ip)
                     if response_received and method == "GET" and body and log:
                         write_log("relay.log",
                                     build_log("RESPONSE", request_id, client_ip , uri,status, len(body)))
-                    clientRelayConnectionSocket.sendall(response)
+                    
                 except OSError:
                     print("client left")
             

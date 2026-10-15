@@ -24,16 +24,16 @@ def read_request(socket):
     return buffer
 
 def read_response(socket):
-   
-    buffer = b''
+
+    chunks = []
 
     while True:
-       message = socket.recv(4096)
-       if message == b'':
-           break
-       buffer += message
+        message = socket.recv(4096)
+        if message == b'':
+            break
+        chunks.append(message)
 
-    return buffer    
+    return b''.join(chunks)    
 
 
 

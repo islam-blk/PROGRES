@@ -146,7 +146,7 @@ Comme il n'y a qu'un seul serveur derrière le relais, le navigateur parle au re
 Pour chaque client (un thread par client) :
 
 1. lecture de la requête (timeout de 10 s) et analyse : méthode, chemin, version, en-têtes ;
-2. adresse du client = première valeur de `X-Forwarded-For` si elle existe, sinon l'adresse de la connexion ; ainsi, dans une chaîne de relais, on garde l'IP du vrai client ;
+2. adresse du client = la valeur de `X-Forwarded-For` si elle existe, sinon l'adresse de la connexion ; ainsi, dans une chaîne de relais, on garde l'IP du vrai client ;
 3. si `--log` et méthode GET : une ligne `REQUEST` est écrite dans le journal ;
 4. si `--ban` et que le chemin contient un site interdit : réponse `403 Forbidden`, l'IP du client est écrite dans `forbidden.log`, et on s'arrête ;
 5. si `--cache` : on regarde dans le cache (une réponse déjà vue est renvoyée sans contacter le serveur) ;
@@ -302,7 +302,7 @@ Les tests ont été faits avec le relais sur la machine hôte et un petit serveu
 
 ### Utilisation d'un LLM
 
-Deux modèles ont été utilisés pour cet exercice, chacun de nous en a utilisé un.
+Trois modèles ont été utilisés pour cet exercice, chacun de nous en a utilisé un.
 
 **Claude Sonnet 5.5 (Anthropic) :**
 
